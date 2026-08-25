@@ -42,32 +42,38 @@ app.get('/api/messages/:sessionId', async (req, res) => {
 app.post('/api/chat', async (req, res) => {
   const { sessionId, userMessage, systemPrompt = "你是 Elliott，一个温柔而复杂的伴侣...", temperature = 0.85 } = req.body;
   try {
-    // 存入用户消息
-    await supabase.from('messages').insert([{ session_id: sessionId, role: 'user', content: userMessage }]);
-    
-    // 获取最近上下文
+    // 1. 先去拉取之前的历史记录（不管能不能拉到，不影响核心聊天）
     const { data: history, error: historyError } = await supabase.from('messages')
       .select('role, content').eq('session_id', sessionId).order('created_at', { ascending: false }).limit(10);
     
-    // 打印可能的数据库报错，方便我们排查
-    if (historyError) {
-      console.error("Supabase 数据库读取报错:", historyError.message);
-    }
+    if (historyError) console.error("Supabase 读取历史失败:", historyError.message);
 
-    // 重点防弹衣在这里：(history || [])
     const formattedHistory = (history || []).reverse().map(msg => ({ role: msg.role, content: msg.content }));
 
+    // 2. 强行拼装消息，绝对保证大模型能看到你刚刚发的话！
+    const messagesForAI = [
+      { role: "system", content: systemPrompt },
+      ...formattedHistory,
+      { role: "user", content: userMessage } // 这一句是防止复读机的核心防弹衣！
+    ];
+
+    // 3. 呼叫大模型
     const completion = await openai.chat.completions.create({
       model: "qwen-plus",
       temperature: parseFloat(temperature), 
-      messages: [{ role: "system", content: systemPrompt }, ...formattedHistory],
+      messages: messagesForAI,
     });
 
     const aiReply = completion.choices[0].message.content;
     
-    // 存入 AI 回复
-    await supabase.from('messages').insert([{ session_id: sessionId, role: 'assistant', content: aiReply }]);
-    await supabase.from('sessions').update({ updated_at: new Date() }).eq('id', sessionId);
+    // 4. 后台慢慢去存数据库，不影响给前端返回结果
+    supabase.from('messages').insert([{ session_id: sessionId, role: 'user', content: userMessage }]).then(({error}) => {
+        if(error) console.error("存用户消息失败:", error.message);
+    });
+    supabase.from('messages').insert([{ session_id: sessionId, role: 'assistant', content: aiReply }]).then(({error}) => {
+        if(error) console.error("存AI消息失败:", error.message);
+    });
+    supabase.from('sessions').update({ updated_at: new Date() }).eq('id', sessionId);
 
     res.json({ reply: aiReply });
   } catch (error) {
