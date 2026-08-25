@@ -60,7 +60,8 @@ app.post('/api/chat', async (req, res) => {
     await supabase.from('sessions').update({ updated_at: new Date() }).eq('id', sessionId);
 
     res.json({ reply: aiReply });
-  } catch (error) {
+} catch (error) {
+    console.error("【抓到报错啦】:", error);
     res.status(500).json({ error: '大脑思考出错' });
   }
 });
