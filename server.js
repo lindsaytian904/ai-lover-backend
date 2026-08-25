@@ -42,25 +42,35 @@ app.get('/api/messages/:sessionId', async (req, res) => {
 app.post('/api/chat', async (req, res) => {
   const { sessionId, userMessage, systemPrompt = "你是 Elliott，一个温柔而复杂的伴侣...", temperature = 0.85 } = req.body;
   try {
+    // 存入用户消息
     await supabase.from('messages').insert([{ session_id: sessionId, role: 'user', content: userMessage }]);
     
     // 获取最近上下文
-    const { data: history } = await supabase.from('messages')
+    const { data: history, error: historyError } = await supabase.from('messages')
       .select('role, content').eq('session_id', sessionId).order('created_at', { ascending: false }).limit(10);
-    const formattedHistory = history.reverse().map(msg => ({ role: msg.role, content: msg.content }));
+    
+    // 打印可能的数据库报错，方便我们排查
+    if (historyError) {
+      console.error("Supabase 数据库读取报错:", historyError.message);
+    }
+
+    // 重点防弹衣在这里：(history || [])
+    const formattedHistory = (history || []).reverse().map(msg => ({ role: msg.role, content: msg.content }));
 
     const completion = await openai.chat.completions.create({
       model: "qwen-plus",
-      temperature: parseFloat(temperature), // 支持前端动态调节温度
+      temperature: parseFloat(temperature), 
       messages: [{ role: "system", content: systemPrompt }, ...formattedHistory],
     });
 
     const aiReply = completion.choices[0].message.content;
+    
+    // 存入 AI 回复
     await supabase.from('messages').insert([{ session_id: sessionId, role: 'assistant', content: aiReply }]);
     await supabase.from('sessions').update({ updated_at: new Date() }).eq('id', sessionId);
 
     res.json({ reply: aiReply });
-} catch (error) {
+  } catch (error) {
     console.error("【抓到报错啦】:", error);
     res.status(500).json({ error: '大脑思考出错' });
   }
