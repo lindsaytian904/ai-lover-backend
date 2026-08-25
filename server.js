@@ -42,7 +42,10 @@ app.get('/api/messages/:sessionId', async (req, res) => {
 app.post('/api/chat', async (req, res) => {
   const { sessionId, userMessage, systemPrompt = "你是 Elliott，一个温柔而复杂的伴侣...", temperature = 0.85 } = req.body;
   try {
-    // 1. 先去拉取之前的历史记录（不管能不能拉到，不影响核心聊天）
+    // 0. 核心防错：确保 sessions 表里有这个 sessionId，如果没有就自动插入一条！
+    await supabase.from('sessions').upsert([{ id: sessionId, name: 'New Chat' }], { onConflict: 'id' });
+
+    // 1. 先去拉取历史记录
     const { data: history, error: historyError } = await supabase.from('messages')
       .select('role, content').eq('session_id', sessionId).order('created_at', { ascending: false }).limit(10);
     
@@ -50,11 +53,11 @@ app.post('/api/chat', async (req, res) => {
 
     const formattedHistory = (history || []).reverse().map(msg => ({ role: msg.role, content: msg.content }));
 
-    // 2. 强行拼装消息，绝对保证大模型能看到你刚刚发的话！
+    // 2. 拼装大模型消息
     const messagesForAI = [
       { role: "system", content: systemPrompt },
       ...formattedHistory,
-      { role: "user", content: userMessage } // 这一句是防止复读机的核心防弹衣！
+      { role: "user", content: userMessage }
     ];
 
     // 3. 呼叫大模型
@@ -66,14 +69,10 @@ app.post('/api/chat', async (req, res) => {
 
     const aiReply = completion.choices[0].message.content;
     
-    // 4. 后台慢慢去存数据库，不影响给前端返回结果
-    supabase.from('messages').insert([{ session_id: sessionId, role: 'user', content: userMessage }]).then(({error}) => {
-        if(error) console.error("存用户消息失败:", error.message);
-    });
-    supabase.from('messages').insert([{ session_id: sessionId, role: 'assistant', content: aiReply }]).then(({error}) => {
-        if(error) console.error("存AI消息失败:", error.message);
-    });
-    supabase.from('sessions').update({ updated_at: new Date() }).eq('id', sessionId);
+    // 4. 存入数据库
+    await supabase.from('messages').insert([{ session_id: sessionId, role: 'user', content: userMessage }]);
+    await supabase.from('messages').insert([{ session_id: sessionId, role: 'assistant', content: aiReply }]);
+    await supabase.from('sessions').update({ updated_at: new Date() }).eq('id', sessionId);
 
     res.json({ reply: aiReply });
   } catch (error) {
