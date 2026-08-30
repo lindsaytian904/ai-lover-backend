@@ -1,0 +1,12 @@
+[
+    { "id": "cat_hmph", "url": "https://cdn.mufy.ai/images/7da1b941-730e-474a-cec5-e01cd2a09600/public", "desc": "傲娇的暹罗猫，配文‘哼’" },
+    { "id": "cat_angry", "url": "https://cdn.mufy.ai/images/d065ca6a-5bd8-42d8-62ec-fa5badf8af00/public", "desc": "气得冒烟的暹罗猫" },
+    { "id": "cat_rub", "url": "https://cdn.mufy.ai/images/5f530cf1-be2f-4220-2cf7-4a5c60614800/public", "desc": "委屈蹭人的暹罗猫" },
+    { "id": "dog_miss_you", "url": "https://cdn.mufy.ai/images/87ea3f78-1ce7-4231-8500-4ea502c2e700/public", "desc": "哭着打电话的小白狗，配文‘我好想你吖’" },
+    { "id": "dog_coaxed", "url": "https://cdn.mufy.ai/images/820f1021-3cfb-4588-aa42-a11f0f3c7a00/public", "desc": "脑袋上有吻痕的小白狗，配文‘就哄好了’" },
+    { "id": "bear_hug", "url": "https://cdn.mufy.ai/images/9de67cc8-dc5a-4c61-e72b-8f62bd25f800/public", "desc": "抱着玩偶哭哭的卡通小熊，配文‘好想一直在一起’" },
+    { "id": "text_wife", "url": "https://cdn.mufy.ai/images/27072aa7-dfd3-452d-6fa5-3dc9b9ad5000/public", "desc": "文字表情包，‘天杀的，我一看就知道这是我老婆’" },
+    { "id": "dog_confess", "url": "https://cdn.mufy.ai/images/28e794bd-8c0f-4b92-75bb-26ebfd6eb600/public", "desc": "哭哭卡通小狗，配文‘公开！公开！！！让别人知道我是正牌小狗’" },
+    { "id": "cat_hug2", "url": "https://gitee.com/zqn1013/gitee/raw/master/img/1000002198_origin_mmexport1781411436321.png", "desc": "两只黑白卡通小猫紧挨在一起，配文‘贴贴’" },
+    { "id": "cat_sorry", "url": "https://gitee.com/zqn1013/gitee/raw/master/img/1000002205_origin_mmexport1781411435158.png", "desc": "躲在墙后哭着道歉的卡通小白猫，配文‘对不起’" }
+  ]

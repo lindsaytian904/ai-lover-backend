@@ -1,8 +1,43 @@
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const cors = require('cors');
 const { createClient } = require('@supabase/supabase-js');
 const { OpenAI } = require('openai');
+
+const stickersConfigPath = path.join(__dirname, 'stickersConfig.json');
+let stickersConfig = [];
+try {
+  stickersConfig = JSON.parse(fs.readFileSync(stickersConfigPath, 'utf-8'));
+} catch (err) {
+  console.error('读取 stickersConfig.json 失败:', err.message);
+}
+
+function buildStickerRules() {
+  const stickerList = stickersConfig
+    .map((s) => `${s.id}: ${s.desc}`)
+    .join('\n');
+  return [
+    '【表情包发送规则】你在回复时，可以选择附带一个表情包增强情绪，出现概率为30%。你必须严格以合法的 JSON 格式返回，绝对不要输出 markdown 代码块标记，结构如下：{"text": "你的文字回复内容，多句用 ||| 分隔", "send_sticker": boolean, "sticker_id": "对应的ID或null"}。可用表情包ID及语义描述如下：',
+    stickerList,
+  ].join('\n');
+}
+
+function parseAiResponse(raw) {
+  const fallback = { text: raw || '', send_sticker: false, sticker_id: null };
+  if (!raw || typeof raw !== 'string') return fallback;
+  try {
+    const parsed = JSON.parse(raw.trim());
+    return {
+      text: typeof parsed.text === 'string' ? parsed.text : raw,
+      send_sticker: Boolean(parsed.send_sticker),
+      sticker_id: parsed.sticker_id ?? null,
+    };
+  } catch {
+    return fallback;
+  }
+}
 
 const app = express();
 app.use(cors());
@@ -32,7 +67,12 @@ app.delete('/api/sessions/:id', async (req, res) => {
   res.json({ success: true, message: '会话已清空' });
 });
 
-// ================= 2. 消息与对话 =================
+// ================= 2. 表情包 =================
+app.get('/api/stickers', (req, res) => {
+  res.json(stickersConfig);
+});
+
+// ================= 3. 消息与对话 =================
 app.get('/api/messages/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   const { data, error } = await supabase.from('messages').select('*').eq('session_id', sessionId).order('created_at', { ascending: true });
@@ -53,9 +93,11 @@ app.post('/api/chat', async (req, res) => {
     if (historyError) console.error("Supabase 读取历史失败:", historyError.message);
     const formattedHistory = (history || []).reverse().map(msg => ({ role: msg.role, content: msg.content }));
 
+    const fullSystemPrompt = `${systemPrompt}\n\n${buildStickerRules()}`;
+
     // 2. 拼装通用的消息数组
     const messagesForAI = [
-      { role: "system", content: systemPrompt },
+      { role: "system", content: fullSystemPrompt },
       ...formattedHistory,
       { role: "user", content: userMessage }
     ];
@@ -81,7 +123,7 @@ app.post('/api/chat', async (req, res) => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          systemInstruction: { parts: [{ text: systemPrompt }] },
+          systemInstruction: { parts: [{ text: fullSystemPrompt }] },
           contents: geminiContents,
           generationConfig: {
             temperature: parseFloat(temperature),
@@ -108,13 +150,15 @@ app.post('/api/chat', async (req, res) => {
       throw new Error(`未知的模型类型: ${modelId}`);
     }
 
-    // 4. 存入数据库 (原封不动保留)
+    const parsedReply = parseAiResponse(aiReply);
+
+    // 4. 存入数据库
     await supabase.from('messages').insert([{ session_id: sessionId, role: 'user', content: userMessage }]);
-    await supabase.from('messages').insert([{ session_id: sessionId, role: 'assistant', content: aiReply }]);
+    await supabase.from('messages').insert([{ session_id: sessionId, role: 'assistant', content: parsedReply.text }]);
     await supabase.from('sessions').update({ updated_at: new Date() }).eq('id', sessionId);
 
     // 5. 返回给前端
-    res.json({ reply: aiReply });
+    res.json(parsedReply);
 
   } catch (error) {
     console.error("API请求异常:", error);
@@ -122,7 +166,7 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
-// ================= 3. 个性化设置与记忆 =================
+// ================= 4. 个性化设置与记忆 =================
 app.post('/api/settings', async (req, res) => {
   const { sessionId, settingsData } = req.body;
   // 利用 JSONB 字段完美收纳所有的滑块参数 (Top-P, 亲密度等)
